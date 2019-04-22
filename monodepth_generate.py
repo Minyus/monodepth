@@ -116,19 +116,18 @@ def generate():
     restore_path = args.checkpoint_path.split(".")[0]
     train_saver.restore(sess, restore_path)
 
-    pp_in_tf = False
+    pp_in_tf = True
     if not pp_in_tf:
         disp = sess.run(disp_t, feed_dict={input_image_t: input_image}) #_ (2, H, W, 1)
         print('disp.shape: ', disp.shape)
 
         disp_squeezed = disp.squeeze() #_ (2, H, W)
         disp_pp = post_process_disparity(disp_squeezed).astype(np.float32) #_ (H, W)
-        print('disp_pp.shape: ', disp_pp.shape)
 
     if pp_in_tf:
         disp_pp = sess.run(disp_pp_t, feed_dict={input_image_t: input_image})  # _ (H, W)
-        print('disp_pp.shape: ', disp_pp.shape)
 
+    print('disp_pp.shape: ', disp_pp.shape)
     # np.save(os.path.join(output_directory, "{}_disp.npy".format(output_name)), disp_pp)
     disp_to_img = scipy.misc.imresize(disp_pp.squeeze(), [original_height, original_width])
     plt.imsave(os.path.join(output_directory, "{}_disp.png".format(output_name)), disp_to_img, cmap='plasma')
