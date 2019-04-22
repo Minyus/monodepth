@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 from monodepth_model import *
 
 import easydict
+import tensorflow as tf
+import numpy as np
 
 def post_process_disparity(disp):
     _, h, w = disp.shape
@@ -62,10 +64,14 @@ def generate():
     original_height, original_width, num_channels = input_image.shape
     input_image = scipy.misc.imresize(input_image, [args.input_height, args.input_width], interp='lanczos')
     input_image = input_image.astype(np.float32) / 255
-    input_images = np.stack((input_image, np.fliplr(input_image)), 0)
 
-    left  = tf.placeholder(tf.float32, [2, args.input_height, args.input_width, 3])
-    model = MonodepthModel(params, "test", left, None)
+    # input_images = np.stack((input_image, np.fliplr(input_image)), 0)
+
+    input_image_t = tf.placeholder(tf.float32, [args.input_height, args.input_width, 3])
+    input_image_t = tf.cast(input_image_t, dtype=tf.float32) / 255
+    input_images_t = tf.stack([input_image_t, tf.image.flip_left_right(input_image_t)], 0)
+
+    model = MonodepthModel(params, "test", input_images_t, None)
 
     # SESSION
     config = tf.ConfigProto(allow_soft_placement=True)
@@ -84,7 +90,7 @@ def generate():
     restore_path = args.checkpoint_path.split(".")[0]
     train_saver.restore(sess, restore_path)
 
-    disp = sess.run(model.disp_left_est[0], feed_dict={left: input_images})
+    disp = sess.run(model.disp_left_est[0], feed_dict={input_image_t: input_image})
     disp_pp = post_process_disparity(disp.squeeze()).astype(np.float32)
 
     output_directory = os.path.dirname(args.image_path)
