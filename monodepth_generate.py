@@ -34,6 +34,26 @@ def post_process_disparity(disp):
     return r_mask * l_disp + l_mask * r_disp + (1.0 - l_mask - r_mask) * m_disp
 
 
+def tf_fliplr(t):
+    assert len(t.shape) == 2
+    t = tf.expand_dims(t, 2)
+    t = tf.image.flip_left_right(t)
+    t = tf.squeeze(t)
+    return t
+def post_process_disparity_tf(disp):
+    _, h, w = disp.shape
+    l_disp = disp[0,:,:]
+    # r_disp = np.fliplr(disp[1,:,:])
+    r_disp = tf_fliplr(disp[1, :, :])
+    m_disp = 0.5 * (l_disp + r_disp)
+    # l, _ = np.meshgrid(np.linspace(0, 1, w), np.linspace(0, 1, h))
+    l, _ = tf.meshgrid(tf.linspace(0.0, 1.0, w), tf.linspace(0.0, 1.0, h))
+    # l_mask = 1.0 - np.clip(20 * (l - 0.05), 0, 1)
+    l_mask = 1.0 - tf.clip_by_value(20.0 * (l - 0.05), 0.0, 1.0)
+    # r_mask = np.fliplr(l_mask)
+    r_mask = tf_fliplr(l_mask)
+    return r_mask * l_disp + l_mask * r_disp + (1.0 - l_mask - r_mask) * m_disp
+
 
 def generate():
 
@@ -60,18 +80,24 @@ def generate():
         lr_loss_weight=0,
         full_summary=False)
 
+    output_directory = os.path.dirname(args.image_path)
+    output_name = os.path.splitext(os.path.basename(args.image_path))[0]
+
     input_image = scipy.misc.imread(args.image_path, mode="RGB")
     original_height, original_width, num_channels = input_image.shape
     input_image = scipy.misc.imresize(input_image, [args.input_height, args.input_width], interp='lanczos')
     input_image = input_image.astype(np.float32) / 255
 
-    # input_images = np.stack((input_image, np.fliplr(input_image)), 0)
-
     input_image_t = tf.placeholder(tf.float32, [args.input_height, args.input_width, 3])
-    input_image_t = tf.cast(input_image_t, dtype=tf.float32) / 255
+    # input_image_t = tf.cast(input_image_t, dtype=tf.float32) / 255
     input_images_t = tf.stack([input_image_t, tf.image.flip_left_right(input_image_t)], 0)
 
     model = MonodepthModel(params, "test", input_images_t, None)
+    disp_t = model.disp_left_est[0]
+
+    disp_squeezed_t = tf.squeeze(disp_t)
+
+    disp_pp_t = post_process_disparity_tf(disp_squeezed_t)
 
     # SESSION
     config = tf.ConfigProto(allow_soft_placement=True)
@@ -90,16 +116,24 @@ def generate():
     restore_path = args.checkpoint_path.split(".")[0]
     train_saver.restore(sess, restore_path)
 
-    disp = sess.run(model.disp_left_est[0], feed_dict={input_image_t: input_image})
-    disp_pp = post_process_disparity(disp.squeeze()).astype(np.float32)
+    pp_in_tf = False
+    if not pp_in_tf:
+        disp = sess.run(disp_t, feed_dict={input_image_t: input_image}) #_ (2, H, W, 1)
+        print('disp.shape: ', disp.shape)
 
-    output_directory = os.path.dirname(args.image_path)
-    output_name = os.path.splitext(os.path.basename(args.image_path))[0]
+        disp_squeezed = disp.squeeze() #_ (2, H, W)
+        disp_pp = post_process_disparity(disp_squeezed).astype(np.float32) #_ (H, W)
+        print('disp_pp.shape: ', disp_pp.shape)
 
-    np.save(os.path.join(output_directory, "{}_disp.npy".format(output_name)), disp_pp)
+    if pp_in_tf:
+        disp_pp = sess.run(disp_pp_t, feed_dict={input_image_t: input_image})  # _ (H, W)
+        print('disp_pp.shape: ', disp_pp.shape)
+
+    # np.save(os.path.join(output_directory, "{}_disp.npy".format(output_name)), disp_pp)
     disp_to_img = scipy.misc.imresize(disp_pp.squeeze(), [original_height, original_width])
     plt.imsave(os.path.join(output_directory, "{}_disp.png".format(output_name)), disp_to_img, cmap='plasma')
-
     print('done!')
+
+
 
 generate()
