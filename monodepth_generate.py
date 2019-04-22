@@ -14,33 +14,12 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL']='0'
 
 
-import argparse
 import scipy.misc
 import matplotlib.pyplot as plt
 
 from monodepth_model import *
-from average_gradients import *
-
-# parser = argparse.ArgumentParser(description='Monodepth TensorFlow implementation.')
-#
-# parser.add_argument('--encoder',          type=str,   help='type of encoder, vgg or resnet50', default='vgg')
-# parser.add_argument('--image_path',       type=str,   help='path to the image', required=True)
-# parser.add_argument('--checkpoint_path',  type=str,   help='path to a specific checkpoint to load', required=True)
-# parser.add_argument('--input_height',     type=int,   help='input height', default=256)
-# parser.add_argument('--input_width',      type=int,   help='input width', default=512)
-#
-# args = parser.parse_args()
-
 
 import easydict
-args = easydict.EasyDict({
-    'encoder': 'vgg',
-    'image_path': '/home/venus/yusuke/proj/monodepth/images/frame07.png',
-    'checkpoint_path': '/home/venus/yusuke/proj/monodepth/models/model_cityscapes/model_cityscapes',
-    'input_height': 256,
-    'input_width': 512
-})
-
 
 def post_process_disparity(disp):
     _, h, w = disp.shape
@@ -52,8 +31,32 @@ def post_process_disparity(disp):
     r_mask = np.fliplr(l_mask)
     return r_mask * l_disp + l_mask * r_disp + (1.0 - l_mask - r_mask) * m_disp
 
-def test_simple(params):
-    """Test function."""
+
+
+def generate():
+
+    args = easydict.EasyDict({
+        'encoder': 'vgg',
+        'image_path': '/home/venus/yusuke/proj/monodepth/images/frame07.png',
+        'checkpoint_path': '/home/venus/yusuke/proj/monodepth/models/model_cityscapes/model_cityscapes',
+        'input_height': 256,
+        'input_width': 512
+    })
+
+    params = monodepth_parameters(
+        encoder=args.encoder,
+        height=args.input_height,
+        width=args.input_width,
+        batch_size=2,
+        num_threads=1,
+        num_epochs=1,
+        do_stereo=False,
+        wrap_mode="border",
+        use_deconv=False,
+        alpha_image_loss=0,
+        disp_gradient_loss_weight=0,
+        lr_loss_weight=0,
+        full_summary=False)
 
     left  = tf.placeholder(tf.float32, [2, args.input_height, args.input_width, 3])
     model = MonodepthModel(params, "test", left, None)
@@ -93,24 +96,4 @@ def test_simple(params):
 
     print('done!')
 
-def main(_):
-
-    params = monodepth_parameters(
-        encoder=args.encoder,
-        height=args.input_height,
-        width=args.input_width,
-        batch_size=2,
-        num_threads=1,
-        num_epochs=1,
-        do_stereo=False,
-        wrap_mode="border",
-        use_deconv=False,
-        alpha_image_loss=0,
-        disp_gradient_loss_weight=0,
-        lr_loss_weight=0,
-        full_summary=False)
-
-    test_simple(params)
-
-if __name__ == '__main__':
-    tf.app.run()
+generate()
